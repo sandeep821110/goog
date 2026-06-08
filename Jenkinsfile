@@ -2,20 +2,14 @@ pipeline {
     agent any
 
     environment {
-        // Change this to your actual Docker Hub username or Registry URL (e.g., 'yourusername/goog')
+        // Docker registry repo target
         DOCKER_IMAGE  = 'sandeep821110/goog' 
         DOCKER_TAG    = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'default'
         
-        // Credentials IDs configured inside Jenkins
+        // Credentials IDs inside Jenkins
         DOCKER_CREDS_ID = 'docker-hub-credentials'
         KUBE_CONFIG_ID  = 'kube-config-credentials'
-    }
-
-    tools {
-        // 1. Fixes the 'npm: not found' error. 
-        // Ensure you have installed the NodeJS plugin and named it 'NodeJS_20' in Global Tool Configuration.
-        nodejs 'NodeJS_20' 
     }
 
     stages {
@@ -25,26 +19,23 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        // We run the application build steps inside a clean node container 
+        stage('Build Frontend application') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                    reuseNode true // Keeps your checked-out git workspace intact
+                }
+            }
             steps {
-                // 'npm ci' is perfect for CI environments
+                // These run securely inside the Node 20 container container
                 sh 'npm ci'
-            }
-        }
-
-        stage('Lint') {
-            steps {
-                // Added a catch or script check in case lint isn't configured in package.json
                 sh 'npm run lint --if-present'
-            }
-        }
-
-        stage('Build') {
-            steps {
                 sh 'npm run build'
             }
         }
 
+        // We step back out to the native host agent to run docker commands
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
@@ -54,7 +45,6 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                // 2. Wrap push commands in a credentials block so Jenkins can log in to your registry
                 withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDS_ID}", passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
                     sh "echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin"
                     sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
@@ -65,7 +55,6 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                // 3. Securely pass the Kubernetes config file so kubectl can communicate with your cluster
                 configFileProvider([configFile(fileId: "${KUBE_CONFIG_ID}", variable: 'KUBECONFIG')]) {
                     sh """
                         kubectl set image deployment/goog \
