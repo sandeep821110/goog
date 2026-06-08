@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goog
+  labels:
+    app: goog
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: goog
+  template:
+    metadata:
+      labels:
+        app: goog
+    spec:
+      containers:
+      - name: goog
+        image: goog:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: goog
+spec:
+  selector:
+    app: goog
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
