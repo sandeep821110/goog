@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Docker registry repo target
         DOCKER_IMAGE  = 'sandeep821110/goog' 
         DOCKER_TAG    = "${env.BUILD_NUMBER}"
         K8S_NAMESPACE = 'default'
@@ -19,23 +18,20 @@ pipeline {
             }
         }
 
-        // We run the application build steps inside a clean node container 
-        stage('Build Frontend application') {
-            agent {
-                docker {
-                    image 'node:20-alpine'
-                    reuseNode true // Keeps your checked-out git workspace intact
-                }
-            }
+        stage('Install & Build Application') {
             steps {
-                // These run securely inside the Node 20 container container
-                sh 'npm ci'
-                sh 'npm run lint --if-present'
-                sh 'npm run build'
+                // This command spins up a container, mounts your current workspace, 
+                // installs dependencies, builds your app, and then cleanly deletes itself.
+                sh '''
+                    docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "
+                        npm ci && \
+                        npm run lint --if-present && \
+                        npm run build
+                    "
+                '''
             }
         }
 
-        // We step back out to the native host agent to run docker commands
         stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
